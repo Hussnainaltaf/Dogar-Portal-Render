@@ -1,0 +1,63 @@
+Dogar Trading Corporation Portal — Quick Start
+==============================================
+
+Quick start (after extracting the zip)
+--------------------------------------
+1.  Extract the archive, then cd into the extracted project folder, e.g.:
+        cd dogar-portal-clean-release-<date>
+    (The folder name matches the zip; there is no nested "webapp/" directory.)
+
+2.  Create and populate your environment file (NEVER ships with the archive):
+        cp .env.example .env
+        # then edit .env and set, at minimum:
+        #   SECRET_KEY            (python3 -c "import secrets; print(secrets.token_hex(32))")
+        #   DEFAULT_ADMIN_EMAIL   / DEFAULT_ADMIN_PASSWORD   (>= 12 chars, not weak)
+        #   VENDOR_ADMIN_EMAIL    / VENDOR_ADMIN_PASSWORD     (>= 16 chars)
+        #   SMTP_HOST/SMTP_USER/SMTP_PASSWORD  (required for password reset)
+
+3.  Create a virtual environment and install dependencies:
+        python3 -m venv venv
+        ./venv/bin/pip install -r requirements.txt
+
+4.  (Optional) rebuild the React SPA — a prebuilt copy already ships in
+    app/static/spa/, so this is only needed if you change the frontend:
+        cd app/frontend && npm install && npm run build && cd ../..
+
+5.  Start the server (schema + bootstrap admin are created automatically on
+    first boot):
+        pm2 start ecosystem.config.cjs
+    # or run directly for a quick test:
+        ./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 3000 --workers 1 \
+            --forwarded-allow-ips 127.0.0.1
+
+
+Credentials
+-----------
+Bootstrap admin/vendor credentials are taken from your .env file
+(DEFAULT_ADMIN_* / VENDOR_ADMIN_*). They are intentionally NOT printed in this
+file — shipping real passwords in a distributable archive is a credential leak.
+
+Lost the admin password? Reset it locally:
+        ./venv/bin/python scripts/reset_admin_password.py
+
+
+Before real production use
+--------------------------
+1. Set a strong, unique SECRET_KEY and admin/vendor passwords in .env.
+2. Replace SMTP_HOST / SMTP_USER / SMTP_PASSWORD with real provider credentials
+   (password reset returns HTTP 503 until this is configured).
+3. Set ENV=production and set ALLOWED_HOSTS to your real public domain(s).
+   The shipped default trusts ONLY loopback + the app's own domains — broad
+   shared-PaaS wildcards (*.railway.app, *.onrender.com, *.fly.dev)
+   are no longer trusted by default.
+4. If you run behind a reverse proxy, set TRUSTED_PROXY_COUNT in .env to the
+   number of trusted proxies that append X-Forwarded-For (0 = direct exposure,
+   the safe default). This governs the login brute-force IP throttle.
+5. Set APP_BASE_URL to your public domain and terminate HTTPS at your proxy
+   (see DEPLOY.md for an nginx example).
+6. Schedule regular backups of data/ and app/static/uploads/.
+
+
+Health check
+------------
+curl https://<your-domain>/api/ping

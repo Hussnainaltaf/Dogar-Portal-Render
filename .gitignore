@@ -1,0 +1,115 @@
+# ============================================================
+# Dogar Portal — .gitignore  (C-06: added by security audit)
+# ============================================================
+
+# ── Secrets ──────────────────────────────────────────────────
+.env
+*.env.local
+.env.*
+!.env.example
+
+# ── Database (contains real candidate / tenant data) ─────────
+# NOTE: the leading slash is load-bearing. An unanchored "data/" pattern
+# matches *every* directory named "data" at *any* depth, which silently
+# excluded app/data/ -- the shipped, non-sensitive template geometry
+# snapshot that new installs need in order to seed correct PDF coordinates.
+# Only the repository-root data/ directory holds live records / tenant DBs.
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# ── Generated / Uploaded files (may contain PII) ────────────
+app/static/uploads/photos/
+app/static/uploads/avatars/
+app/static/uploads/generated_pdfs/
+
+# ── SQL backups (contain real PII — never commit) ────────────
+migrations/dogar_full_backup.sql
+migrations/dogar_full_backup.sql.gz
+migrations/legacy_backup.sql
+*.sql
+*.sql.gz
+/data-staging/
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Runtime / process managers ───────────────────────────────
+logs/
+*.log
+pids/
+*.pid
+*.pid.lock
+.pm2/
+
+# ── Testing / linting caches and reports ────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+app/frontend/playwright-report/
+app/frontend/test-results/
+test-results/
+
+# ── Node (PM2 / tooling) ─────────────────────────────────────
+node_modules/
+npm-debug.log
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# React frontend build cache
+app/frontend/tsconfig.tsbuildinfo
+
+# Crash dumps (anchored + file-only so it never matches the app/core/ source
+# package — a bare "core" pattern also matches directories named "core").
+/core
+/core.*
+*.core
+
+# Vendored Tailwind CLI binary (NEW-8: removed, do not re-commit)
+app/static/vendor/js/tailwindcss.js
+
+# L-2 FIX (audit 2026-07-03): binary ZIP artifacts must never be committed
+zipFile.zip
+*.zip
+*.bak
+*.pre_hig_bak
+
+# AUDIT 2026-07-31 (Medium): `package-lock.json` was ignored here. That made the
+# npm lockfile absent from every clone and every release ZIP, which in turn
+# forced the Dockerfile's frontend stage to use `npm install` -- re-resolving the
+# whole dependency tree on every image build. Two independent builds of the same
+# commit could therefore ship different frontend dependencies. The lockfile is
+# now TRACKED so `npm ci` installs the exact audited tree. Do not re-add it.
+#
+# (It turned out `app/frontend/package-lock.json` was ALREADY tracked -- git
+# ignore rules do not apply to files already in the index -- so the Dockerfile
+# comment asserting it was 'NOT shipped' had been stale for some time, and the
+# slower `npm install` it justified was unnecessary all along.)
+#
+# The repo root has no package.json; a stray lockfile there is an artifact of
+# running npm in the wrong directory, so that one path stays ignored.
+/package-lock.json
+
+# Benchmark raw output (keep the markdown report, drop the raw json)
+docs/performance_report.json

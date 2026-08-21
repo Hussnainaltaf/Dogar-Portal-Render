@@ -1,0 +1,1419 @@
+/* Tailwind utilities are compiled into the SPA bundle here (replacing the
+   Play CDN, which printed a production console warning). The bulk of the
+   bespoke component styling still comes from the shared /static/css/app.css
+   (loaded in index.html). */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------
+   Theme palette (blue ⇄ forest-green)
+   ------------------------------------------------------------------
+   The `blue` Tailwind family is virtualised onto these CSS variables
+   (see tailwind.config.js). Toggling `.theme-forest-green` on <html>
+   (done in index.html before paint) swaps every `*-blue-*` utility to
+   green — reproducing the old runtime tailwind.config swap with zero
+   runtime JS. Channels are space-separated "R G B" so alpha modifiers
+   (e.g. bg-blue-600/50) keep working. */
+:root {
+  /* ── Enterprise brand tokens (v13) ─────────────────────────────────────
+     Deliberately FLAT. An earlier pass used multi-stop gradients for the
+     sidebar brand block, avatars, primary buttons and the DtcBot header; it
+     read as consumer-app decoration rather than business software, so the
+     tokens are now solid colours plus a very light tint and a hairline rule.
+     Identity comes from one disciplined accent, generous whitespace and
+     precise typography — not from colour effects.
+     Everything downstream (.brand-fill, .brand-tile, .nav-active, .dtc-head,
+     .app-band) reads these, so the forest-green theme still re-skins the
+     whole app by overriding four values. */
+  --brand-solid:       #1d4ed8;  /* primary accent surface            */
+  --brand-solid-hover: #1a44bd;  /* pressed / hovered accent          */
+  --brand-tint:        #eff4ff;  /* selected-row + soft header wash   */
+  --brand-rule:        #dbe4f5;  /* structural hairline               */
+  --brand-on-solid:    #ffffff;
+
+  /* Shell geometry — the sidebar width lives here (instead of a hard-coded
+     Tailwind `lg:ml-60`) so the desktop collapse toggle can shift the content
+     column with a single custom-property write and no re-render. */
+  --sidebar-w:            15rem;   /* 240px expanded */
+  --sidebar-w-collapsed:  4.75rem; /* 76px  icon rail */
+  --topbar-h:             4rem;
+
+  /* Apple system-blue ramp (matches --brand #0071e3 in app.css v18).
+     Kept as space-separated "R G B" channels so alpha modifiers work. */
+  --blue-50:  239 246 255;
+  --blue-100: 224 240 255;
+  --blue-200: 189 220 252;
+  --blue-300: 125 185 247;
+  --blue-400: 56 141 235;
+  --blue-500: 10 132 255;
+  --blue-600: 0 113 227;
+  --blue-700: 0 88 185;
+  --blue-800: 0 71 150;
+  --blue-900: 0 56 120;
+}
+.theme-forest-green {
+  --brand-solid:       #15803d;
+  --brand-solid-hover: #126b34;
+  --brand-tint:        #eefaf1;
+  --brand-rule:        #d3ecdb;
+  --blue-50:  240 253 244;
+  --blue-100: 220 252 231;
+  --blue-200: 187 247 208;
+  --blue-300: 134 239 172;
+  --blue-400: 74 222 128;
+  --blue-500: 22 163 74;
+  --blue-600: 22 163 74;
+  --blue-700: 21 128 61;
+  --blue-800: 22 101 52;
+  --blue-900: 20 83 45;
+}
+
+/* SPA-only helpers. */
+
+/* ============================================================
+   MOBILE-FIRST RESPONSIVE LAYER (touch-friendly)
+   ============================================================ */
+
+/* ── Smooth momentum scrolling everywhere on touch devices ──
+   Enables iOS/Android inertial scrolling and prevents the janky
+   "stuck / rubber-band" feel the user reported. Applied globally so
+   both the SPA main content and any inner scroll areas benefit. */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  /* Tenant typeface, with the authored Dogar stack as the fallback.
+   *
+   * MEASURED GAP 2026-08-19 -- the third of the three things the operator named
+   * ("logo/colors/fonts") was the one nothing consumed. `applyTenantBranding()`
+   * wrote `--brand-font`, and NO rule in either stylesheet read it, so the
+   * property was set on <html> and had no effect whatsoever. Verified by grep:
+   * `--brand-font` appeared exactly once in the entire codebase -- at the
+   * write site.
+   *
+   * The var() FALLBACK is what keeps the Dogar tenant unchanged, which the
+   * brief requires. `applyTenantBranding()` is a deliberate no-op when no
+   * tenant is resolved, so on the root portal `--brand-font` is never set and
+   * this resolves to `--font-body` -- byte-for-byte the typography app.css
+   * already authored. A hardcoded stack here would have overridden Dogar's own
+   * font on every page.
+   *
+   * This rule lives in index.css (the bundled stylesheet, loaded AFTER
+   * app.css) so it wins on cascade order over app.css's
+   * `body { font-family: var(--font-body) }` without !important.
+   */
+  font-family: var(--brand-font, var(--font-body));
+  -webkit-overflow-scrolling: touch;
+  /* NOTE: do NOT set `overscroll-behavior-y: none` or `overflow:hidden` on
+     body here — that was preventing the whole portal from scrolling. The body
+     is the primary scroll surface and must stay scrollable. */
+}
+/* The page's primary scroll surface. Momentum + GPU-friendly. */
+.spa-main-content {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+/* Any element the app marks as an inner scroll region gets momentum too. */
+.dtc-scroll, [data-scroll], .overflow-auto, .overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile sidebar drawer — off-canvas slide-in below 1024px. */
+@media (max-width: 1023px) {
+  /* Prevent horizontal overflow but KEEP vertical scrolling working.
+     (Removed `touch-action: pan-y` on html/body — on some Android/Chromium
+     builds it interacted badly with fixed elements and froze the scroll.) */
+  html, body { overflow-x: hidden; max-width: 100vw; }
+  aside#sidebar {
+    position: fixed !important;
+    top: 0; left: 0;
+    height: 100vh; height: 100dvh;
+    /* !important because the desktop rule further down sets width from the
+       --sidebar-w custom property and would otherwise win on source order. */
+    width: 84vw !important; max-width: 320px !important;
+    z-index: 60 !important;
+    transform: translateX(-101%);
+    transition: transform .28s cubic-bezier(.32,.72,0,1);
+    box-shadow: 12px 0 30px -10px rgba(15,23,42,.35);
+    /* Own scroll context so the drawer's nav scrolls without dragging the page */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    /* Promote to its own layer so the slide animation is silky */
+    will-change: transform;
+  }
+  aside#sidebar.show { transform: translateX(0) !important; }
+  .spa-main { margin-left: 0 !important; width: 100% !important; }
+  /* When the drawer is open, freeze the page behind it (belt-and-suspenders
+     alongside the JS body-overflow lock in AppLayout). */
+  body:has(aside#sidebar.show) { overflow: hidden; }
+}
+
+/* Backdrop for mobile drawer */
+.spa-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, .45);
+  z-index: 55;
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s ease;
+}
+.spa-backdrop.show { opacity: 1; pointer-events: auto; }
+
+/* Spinner for route suspense fallback */
+.spa-loader {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 60vh; color: #2563eb;
+}
+
+/* ── Desktop sidebar polish: slim custom scrollbar on the nav ── */
+@media (min-width: 1024px) {
+  aside#sidebar nav::-webkit-scrollbar { width: 6px; }
+  aside#sidebar nav::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, .35);
+    border-radius: 999px;
+  }
+  aside#sidebar nav::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, .55); }
+  aside#sidebar nav { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.4) transparent; }
+}
+
+/* ── Touch target sizing (WCAG ≥44px) on coarse pointers ───── */
+@media (pointer: coarse) {
+  .nav-item, .nav-sub { min-height: 42px; }
+  button, .btn, a.btn, [role="button"] { touch-action: manipulation; }
+}
+
+/* ── Mobile page padding: tighter so content gets more width ── */
+@media (max-width: 639px) {
+  main.spa-main-content { padding: 14px !important; }
+  .card-body { padding: 14px !important; }
+}
+
+/* ── Wide tables: `.table-scroll` now actually scrolls ──
+   The class name promised horizontal scrolling but only ever set
+   `position: relative`. Callers compensated by *also* writing Tailwind's
+   `overflow-x-auto` — 6 of the 14 wrappers did, 8 did not. The 8 were latent
+   defects that stayed invisible until a parent clipped them: on /portal-admin a
+   `.table-scroll` sits inside `.card.overflow-hidden`, so 165px of the 8-column
+   tenant table (Status and the action button) was unreachable at every width,
+   on desktop as well as tablet — found by the full-route QA sweep.
+
+   Fixing the class instead of the 8 call sites makes one pattern true
+   everywhere and keeps the redundant `overflow-x-auto` on the other 6 harmless.
+
+   This does not regress the sticky `thead` in app.css: the six wrappers that
+   already carried `overflow-x-auto` were verified to be non-sticky in the
+   browser (a header at y=278 scrolled to y=-22), because a horizontal scroll
+   container computes `overflow-y: visible` to `auto` and becomes the sticky
+   containing block. Sticky headers were therefore already inert on the busiest
+   list pages — nothing changes except that the clipped columns become reachable.
+
+   The ≤640px rule below re-sets `overflow-x: visible` for card-mode tables, so
+   phones keep stacking rather than scrolling. */
+.table-scroll { overflow-x: auto; }
+
+/* ============================================================
+   RESPONSIVE DATA TABLES
+   On ≤640px every .data-table collapses each row into a stacked
+   card. Each <td> shows its column header (via data-label) on the
+   left and the value on the right. Pages that set data-label on
+   their <td>s get a clean mobile card list automatically; tables
+   without data-label fall back to a horizontally-scrollable view.
+   ============================================================ */
+@media (max-width: 640px) {
+  /* A card-mode table must NOT keep the horizontal-scroll min-width, or the
+     value column gets clipped. Force the table + its scroll wrapper to the
+     full viewport width. */
+  .table-scroll:has(.data-table.responsive-cards) { overflow-x: visible; }
+  .table-scroll .data-table.responsive-cards { min-width: 0 !important; width: 100% !important; }
+
+  .data-table.responsive-cards thead { display: none; }
+  .data-table.responsive-cards,
+  .data-table.responsive-cards tbody,
+  .data-table.responsive-cards tr,
+  .data-table.responsive-cards td { display: block; width: 100%; }
+
+  .data-table.responsive-cards tr {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    margin-bottom: 12px;
+    padding: 6px 4px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15,23,42,.06);
+  }
+  .data-table.responsive-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    text-align: right !important;
+    padding: 9px 14px !important;
+    border: none !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    min-height: 44px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .data-table.responsive-cards tr td:last-child { border-bottom: none !important; }
+  .data-table.responsive-cards td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #64748b;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    text-align: left;
+    flex: 0 0 auto;
+    margin-right: auto;
+    white-space: nowrap;
+  }
+  /* Value side: take remaining width, wrap, stay right-aligned */
+  .data-table.responsive-cards td > * { min-width: 0; }
+  /* Cells flagged as the "primary" (e.g. name) get prominence */
+  .data-table.responsive-cards td[data-primary] {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  /* Empty-state / colspan rows shouldn't be styled as a label row */
+  .data-table.responsive-cards td[colspan]::before { content: none; }
+  .data-table.responsive-cards td[colspan] {
+    justify-content: center;
+    text-align: center !important;
+  }
+}
+
+/* Tables WITHOUT responsive-cards: ensure a clean horizontal scroll
+   with a subtle fade hint so users know there's more to the right. */
+@media (max-width: 640px) {
+  .table-scroll {
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .table-scroll table { min-width: 640px; }
+}
+
+/* Modals: full-width sheet feel on small screens */
+@media (max-width: 640px) {
+  .spa-modal-card { width: 100% !important; max-width: 100% !important; border-radius: 16px 16px 0 0 !important; }
+  /* Multi-step modals (Assign Candidate etc.): the step-indicator strip and
+     the footer button row must never overflow the phone width — let them wrap
+     / scroll instead of being pushed off-screen (video: step bar + Next/Cancel
+     buttons were clipped). */
+  .spa-modal-card .step-indicator,
+  .spa-modal-card .wizard-steps { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .spa-modal-card .modal-footer,
+  .spa-modal-card .wizard-actions { flex-wrap: wrap; }
+}
+
+/* Horizontal tab bars (Details / Trades / Documents / Payments; client &
+   candidate detail tabs) must scroll horizontally on mobile instead of
+   wrapping/clipping the trailing tabs (video: end tabs were cut off). */
+@media (max-width: 767px) {
+  .tab-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab-bar .tab-btn { flex: 0 0 auto; white-space: nowrap; }
+
+  /* `.tab-scroll` is the behaviour-only version of the rule above, for tab
+     strips that are styled with utility classes rather than `.tab-bar`
+     (client detail). It exists as a separate class on purpose: `.tab-bar` also
+     carries *visual* base styles in the legacy `static/css/app.css` — which the
+     SPA loads — so tagging a utility-styled strip with `.tab-bar` would silently
+     restyle it on desktop. This class adds scrolling and nothing else.
+
+     Why it matters: the client-detail strip was `overflow-x: visible` with
+     scrollWidth 520 inside a 366px track, and did not scroll. The trailing
+     "Statement" tab sat at x=532 on a 390px phone — permanently unreachable,
+     not merely ugly. Caught by the full-route QA sweep. */
+  .tab-scroll {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-scroll::-webkit-scrollbar { display: none; }
+  .tab-scroll > * { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* NOTE: the DtcBot mobile sheet rules live in the "DTC BOT" section at the
+   bottom of this file (single source of truth — the earlier duplicate block
+   was removed in v13 so there is only one place to tune the bot layout). */
+
+/* Side panel + overlay animations (candidate detail in-page panel) */
+@keyframes dtc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dtc-slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.animate-fade-in { animation: dtc-fade-in 0.18s ease-out; }
+.animate-slide-in-right { animation: dtc-slide-in-right 0.24s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ── Route-transition progress bar (perceived-speed feedback) ──
+   Flat accent, 2px, no glow. It should read as a status indicator, not a
+   decoration. */
+.route-progress {
+  position: fixed;
+  top: 0; left: 0;
+  height: 2px;
+  width: 0;
+  z-index: 200;
+  background: var(--brand-solid);
+  opacity: 0;
+  transition: width 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+}
+.route-progress--busy {
+  width: 92%;
+  opacity: 1;
+  transition: width 0.35s cubic-bezier(0.1, 0.7, 0.3, 1), opacity 0.15s ease;
+}
+
+/* ── Page transition ──────────────────────────────────────────
+   A short settle on the content pane only (the shell never moves), keyed on
+   the pathname in AppLayout. 140ms with a 4px rise: long enough to signal
+   "new page", far below the ~200ms where a UI starts to feel sluggish. GPU
+   properties only (opacity/transform), so it cannot cause layout work. */
+/* The FINAL keyframe must not mention `transform` at all.
+   ------------------------------------------------------------------
+   MEASURED DEFECT (2026-08-17): writing `to { transform: none; }` is not the
+   same as writing nothing. With `animation-fill-mode: forwards` the final
+   keyframe stays asserted after the animation ends, and Chromium resolves the
+   retained `transform: none` to the IDENTITY MATRIX -- computed style reads
+   `matrix(1, 0, 0, 1, 0, 0)`. Per spec any computed transform other than
+   `none` makes the element a containing block for `position: fixed`
+   descendants, and an identity matrix is no exception.
+
+   So the 2026-08-13 fix (`both` -> `forwards`) removed the *visible* symptom
+   but NOT the containing block. Proven by injecting a `fixed inset-0` probe
+   into the settled wrapper at 1024x640:
+
+     probe rect  736x596 at (264,131)   <- the content wrapper
+     viewport    1024x640 at (0,0)      <- what `fixed inset-0` must mean
+
+   Note 736 and x=264: the same figures recorded during the original outage.
+   The app only *looked* fixed because every dialog was portalled to <body>,
+   which sidesteps the wrapper. Any future overlay that forgets to portal --
+   or any `position: fixed` toast, FAB, popover or sticky helper rendered
+   inside a routed page -- would be silently clipped again.
+
+   TWO FAILED ATTEMPTS, KEPT AS WARNINGS -- both were re-measured, not assumed:
+
+   Attempt 1: move the transform to a `99%` keyframe and leave `to` with
+   opacity only. Did NOT help. With `forwards` the retained value is the last
+   one SPECIFIED anywhere in the animation, so the 99% transform stayed
+   asserted. Still 736x596 at (264,131). Still CLIPPED.
+
+   Attempt 2: animate `translate` (an INDEPENDENT transform property) instead,
+   so `transform` itself stays `none`. Half right -- computed `transform` did
+   become exactly `none` -- but the probe was STILL clipped. An unfiltered dump
+   of the settled wrapper showed why:
+
+       transform = "none"     <- attempt 2 worked
+       translate = "0px"      <- and this is the actual containing block
+
+   A containing block is formed by any value of `translate`/`rotate`/`scale`
+   other than the KEYWORD `none`, and the retained `0px` is not `none`. Moving
+   the animation to an independent property moved the bug; it did not remove
+   it. (An earlier version of the ancestor-chain probe treated `0px` as inert
+   and reported "no suspects" while the child was demonstrably clipped -- the
+   contradiction is what exposed the filter as wrong.)
+
+   THE ACTUAL FIX -- do not RETAIN the animated property at all. The problem
+   was never which property is animated, it was `animation-fill-mode`. The fill
+   mode is dropped below, so once the 140ms run ends the wrapper reverts to its
+   own base style, where `translate` and `transform` are both the keyword
+   `none` and no containing block exists. Nothing is lost by dropping it: fill
+   modes only matter when the final keyframe differs from the base style, and
+   here the base style already IS the end state (base `opacity` is 1, base
+   `translate` is `none`), so there is no snap-back and no flash.
+
+   Verified by re-running the probe after this change: probe rect became
+   1024x640 at (0,0) -- the real viewport. tests/
+   test_fixed_overlay_containing_block.py now pins every part of this. */
+@keyframes page-enter {
+  from { opacity: 0; translate: 0 4px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+.page-enter {
+  /* NO fill mode at all -- not `both`, and not `forwards` either.
+     ------------------------------------------------------------------
+     THIS LINE BROKE EVERY HAND-ROLLED MODAL IN THE APP (fixed 2026-08-13,
+     properly finished 2026-08-17).
+
+     `both` applies the keyframes' fill in BOTH directions and keeps the
+     animation's transform asserted on the element permanently. A non-`none`
+     `transform` makes an element the CONTAINING BLOCK for any
+     `position: fixed` descendant -- so `fixed inset-0` stopped meaning "the
+     viewport" and started meaning "this 736x180 content wrapper". Every
+     dialog that was not portalled to <body> was therefore positioned and
+     CLIPPED inside the page wrapper: the Customize Role dialog was cut off
+     mid-form with its Save button unreachable, and the page appeared to end
+     at a hard horizontal line.
+
+     Measured at 1024x640 before/after:
+       before: overlay 736x180 at (264,151)   <- trapped in the wrapper
+       after:  overlay 1024x620 at (0,20)     <- the actual viewport
+
+     The 2026-08-13 change to `forwards` fixed the SYMPTOM but not the bug:
+     `forwards` still retains the final keyframe, so the wrapper stayed a
+     containing block (via an identity matrix, then via a retained
+     `translate: 0px`). See the long note above @keyframes page-enter for the
+     two failed attempts and the measurements that ruled each one out. Any
+     fill mode keeps an animated transform-ish property asserted, so the only
+     correct answer is to use none: after 140ms the element falls back to its
+     own base style, where `transform` and `translate` are both the keyword
+     `none`. This is safe precisely because the base style already equals the
+     end state, so nothing snaps back when the fill is dropped.
+
+     `will-change` is deliberately NOT set here either. It promotes a layer
+     and creates a containing block for as long as it is applied; the old
+     comment claimed the layer was "released as soon as it settles", but a
+     static declaration is never released. For a 140ms opacity/transform
+     animation the compositor hint is worth nothing next to that cost.
+
+     Do not add ANY fill mode, and do not restore `will-change`, on this rule.
+     `tests/test_fixed_overlay_containing_block.py` fails if either comes
+     back, and the `page-enter` keyframes are pinned there too. */
+  animation: page-enter 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-progress { transition: none; }
+  /* Respect the OS setting: no movement, and no flash of hidden content. */
+  .page-enter { animation: none; }
+  .animate-fade-in, .animate-slide-in-right { animation: none !important; }
+}
+
+/* ============================================================
+   ENTERPRISE-GRADE POLISH LAYER (v12)
+   Sharpness · borders · focus · tabs · scrollbars · perf.
+   Appended last so it wins the cascade over base app.css.
+   ============================================================ */
+
+/* ── Crisp rendering: sharper text + hairline borders on HiDPI ── */
+* { -webkit-tap-highlight-color: transparent; }
+body { text-rendering: optimizeLegibility; }
+
+/* Hairline 1px borders that stay razor-sharp on retina displays. */
+.card, .data-table, .stat-tile, [class*="border"] { border-color: rgba(226, 232, 240, 0.9); }
+
+/* ── Accessible, consistent focus ring across the whole SPA ──
+   Keyboard users get a clear ring; mouse clicks stay clean.
+   Sidebar nav items are EXCLUDED here — the offset outline drew an ugly
+   double rounded box around the clicked menu item; they use their own
+   clean inset ring below instead. */
+:where(a, button, input, select, textarea, [role="button"], [tabindex]):not(.nav-item):not(.nav-sub):focus-visible {
+  outline: 2px solid rgba(0, 113, 227, 0.6);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.theme-forest-green :where(a, button, input, select, textarea, [role="button"], [tabindex]):not(.nav-item):not(.nav-sub):focus-visible {
+  outline-color: rgba(22, 163, 74, 0.55);
+}
+
+/* Sidebar items: no offset outline box ever. Clean inset ring on keyboard
+   focus; plain click just shows the active/hover pill (no ring at all). */
+#sidebar .nav-item,
+#sidebar .nav-sub,
+.nav-item,
+.nav-sub { outline: none !important; }
+#sidebar .nav-item:focus:not(:focus-visible),
+#sidebar .nav-sub:focus:not(:focus-visible),
+.nav-item:focus:not(:focus-visible),
+.nav-sub:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
+#sidebar .nav-item:focus-visible,
+#sidebar .nav-sub:focus-visible,
+.nav-item:focus-visible,
+.nav-sub:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: inset 0 0 0 2px rgba(0, 113, 227, 0.4) !important;
+}
+
+/* ============================================================
+   AUTHORITATIVE SIDEBAR TYPOGRAPHY + STRUCTURE (v13).
+   index.css is the LAST stylesheet loaded (after app.css), so these
+   rules win the cascade. They are what actually renders on screen —
+   any weight set only in app.css is overridden here.
+
+   Enterprise treatment: dark neutral labels, a single flat accent for the
+   selected item, and a 3px rail to mark position. No gradients, no glow —
+   the eye should find the current page instantly and then stop noticing
+   the chrome.
+   ============================================================ */
+#sidebar .nav-item,
+.nav-item {
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  color: #1e293b !important;          /* slate-800 — dark & pure */
+  letter-spacing: -0.012em !important;
+  padding: 0.58rem 0.7rem 0.58rem 0.72rem !important;
+  border-radius: 10px !important;
+  gap: 0.65rem !important;
+}
+#sidebar .nav-item i,
+.nav-item i {
+  font-size: 15px !important;
+  opacity: 1 !important;
+  width: 20px !important;
+  color: #64748b;
+  transition: color 140ms ease;
+}
+#sidebar .nav-item:hover i,
+.nav-item:hover i { color: var(--brand-solid); }
+
+/* Active leaf: flat tint + solid rail + accent ink. */
+#sidebar .nav-active,
+.nav-active {
+  background: var(--brand-tint) !important;
+  color: var(--brand-solid) !important;
+  font-weight: 800 !important;
+  box-shadow: none !important;
+}
+#sidebar .nav-active::before,
+.nav-active::before {
+  left: -2px !important;
+  width: 3px !important;
+  height: 64% !important;
+  background: var(--brand-solid) !important;
+  border-radius: 0 3px 3px 0 !important;
+}
+#sidebar .nav-active i,
+.nav-active i { color: var(--brand-solid) !important; }
+
+#sidebar .nav-active-parent,
+.nav-active-parent {
+  font-weight: 800 !important;
+  color: var(--brand-solid) !important;
+}
+#sidebar .nav-active-parent i,
+.nav-active-parent i { color: var(--brand-solid) !important; }
+
+#sidebar .nav-sub,
+.nav-sub {
+  font-weight: 650 !important;
+  font-size: 12.5px !important;
+  color: #475569 !important;
+  padding: 0.42rem 0.6rem !important;
+  border-radius: 8px !important;
+}
+#sidebar .nav-sub i,
+.nav-sub i { color: #94a3b8; font-size: 12px; }
+#sidebar .nav-sub-active,
+.nav-sub-active {
+  font-weight: 800 !important;
+  background: var(--brand-tint) !important;
+  color: var(--brand-solid) !important;
+}
+#sidebar .nav-sub-active i,
+.nav-sub-active i { color: var(--brand-solid) !important; }
+.nav-group > button {
+  font-weight: 700 !important;
+  font-size: 14px !important;
+}
+
+/* ── Sidebar shell (brand block + section labels + rail) ──
+   The brand block is a plain white masthead separated by a hairline, the
+   same way a desktop business application presents its identity. It used to
+   be a saturated gradient banner; that fought with the page content for
+   attention every second the app was open. */
+aside#sidebar { width: var(--sidebar-w); }
+.sb-brand {
+  position: relative;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0.95rem 0.85rem;
+  display: flex; align-items: center; gap: 0.65rem;
+  border-bottom: 1px solid #eef2f7;
+  overflow: hidden;
+}
+.sb-brand-logo {
+  width: 36px; height: 36px; flex: 0 0 36px;
+  border-radius: 9px;
+  background: #f8fafc;
+  border: 1px solid #e8edf4;
+  display: flex; align-items: center; justify-content: center;
+}
+.sb-brand-logo img { width: 24px; height: 24px; object-fit: contain; }
+.sb-brand-text { min-width: 0; line-height: 1.2; }
+.sb-brand-name {
+  font-size: 12.5px; font-weight: 800; letter-spacing: -0.005em;
+  color: #0f172a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sb-brand-sub {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: #94a3b8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sb-section {
+  padding: 0.85rem 0.85rem 0.3rem;
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.1em; color: #94a3b8;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.sb-section::after {
+  content: ""; height: 1px; flex: 1;
+  background: linear-gradient(90deg, #e6ebf3, transparent);
+}
+.sb-section:first-child { padding-top: 0.55rem; }
+.sb-foot {
+  border-top: 1px solid #eef2f7;
+  padding: 0.6rem 0.85rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  font-size: 10px; color: #94a3b8;
+}
+/* Desktop collapse toggle */
+.sb-collapse-btn {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.5rem; border-top: 1px solid #eef2f7;
+  font-size: 11px; font-weight: 700; color: #64748b;
+  background: #fbfcfe;
+  transition: background 140ms ease, color 140ms ease;
+}
+.sb-collapse-btn:hover { background: #f1f5f9; color: var(--brand-solid); }
+
+/* ── Collapsed (icon-rail) desktop mode ── */
+@media (min-width: 1024px) {
+  .spa-main {
+    margin-left: var(--sidebar-w);
+    transition: margin-left 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  aside#sidebar { transition: width 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+  html.sb-collapsed { --sidebar-w: var(--sidebar-w-collapsed); }
+  html.sb-collapsed .sb-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  html.sb-collapsed .sb-brand-text,
+  html.sb-collapsed .sb-label,
+  html.sb-collapsed .sb-chevron,
+  html.sb-collapsed .sb-section::after,
+  html.sb-collapsed .sb-foot-text { display: none !important; }
+  html.sb-collapsed .sb-section {
+    justify-content: center; padding: 0.7rem 0 0.25rem; letter-spacing: 0;
+    font-size: 8.5px; color: #cbd5e1;
+  }
+  html.sb-collapsed #sidebar .nav-item,
+  html.sb-collapsed #sidebar .nav-sub {
+    justify-content: center;
+    padding-left: 0.5rem !important; padding-right: 0.5rem !important;
+  }
+  html.sb-collapsed #sidebar .nav-group-children { display: none !important; }
+  html.sb-collapsed .sb-foot { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spa-main, aside#sidebar { transition: none !important; }
+}
+
+/* ============================================================
+   BREADCRUMBS + PAGE BAND (enterprise navigation clarity)
+   ============================================================ */
+.app-band {
+  position: relative;
+  background: #ffffff;
+  border-bottom: 1px solid #e8edf4;
+  padding: 0.55rem 1.5rem;
+}
+.app-crumbs {
+  display: flex; align-items: center; gap: 0.35rem;
+  font-size: 12px; font-weight: 650; color: #64748b;
+  overflow-x: auto; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+}
+.app-crumbs::-webkit-scrollbar { display: none; }
+.app-crumbs a, .app-crumbs .crumb-static {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.2rem 0.4rem; border-radius: 7px;
+  color: #64748b; text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
+}
+.app-crumbs a:hover { background: rgba(29, 78, 216, 0.07); color: var(--brand-dark, #1d4ed8); }
+.app-crumbs .crumb-sep { color: #cbd5e1; font-size: 9px; flex: 0 0 auto; }
+.app-crumbs .crumb-current {
+  color: #0f172a; font-weight: 800;
+  padding: 0.2rem 0.4rem;
+  max-width: 46vw; overflow: hidden; text-overflow: ellipsis;
+}
+@media (max-width: 639px) {
+  .app-band { padding: 0.45rem 0.9rem; }
+  .app-crumbs { font-size: 11.5px; }
+  .app-crumbs .crumb-current { max-width: 60vw; }
+}
+
+/* Flat brand helpers reusable by pages/headers.
+   `.brand-gradient` / `.brand-gradient-soft` keep their NAMES purely so the
+   existing markup did not need a sweeping rename, but they now paint a solid
+   accent and a flat tint respectively. Any future call-site should read them
+   as "brand fill" / "brand tint". */
+.brand-gradient { background: var(--brand-solid); color: var(--brand-on-solid); }
+.brand-gradient:hover { background: var(--brand-solid-hover); }
+.brand-gradient-soft { background: var(--brand-tint); }
+.brand-tile {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 9px;
+  background: var(--brand-tint);
+  color: var(--brand-solid);
+  border: 1px solid var(--brand-rule);
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+/* Compact variant for the phone-only header lockup. Kept as an explicit
+   modifier rather than an attribute-selector override, because `[class*="w-"]`
+   would also match unrelated utilities such as `shadow-lg`. */
+.brand-tile.brand-tile--sm { width: 32px; height: 32px; border-radius: 9px; }
+
+/* ============================================================
+   LOADING / EMPTY / ERROR STATE PRIMITIVES
+   ============================================================ */
+.skeleton {
+  position: relative; overflow: hidden;
+  background: #eef2f7; border-radius: 8px;
+}
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent);
+  animation: skeleton-sweep 1.25s infinite;
+}
+@keyframes skeleton-sweep { 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
+.state-block {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 3rem 1.25rem; gap: 0.35rem;
+}
+.state-icon {
+  width: 54px; height: 54px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand-tint); color: var(--brand-solid);
+  border: 1px solid var(--brand-rule);
+  font-size: 21px; margin-bottom: 0.5rem;
+}
+.state-icon--danger { background: rgba(244, 63, 94, .10); color: #e11d48; }
+
+/* ============================================================
+   TOAST STACK (components/Toast.tsx)
+   Layout moved out of inline `style` objects so phones get a full-width,
+   safe-area-aware stack instead of a 360px box hanging off the right edge.
+   ============================================================ */
+.toast-stack {
+  position: fixed;
+  top: calc(0.9rem + env(safe-area-inset-top, 0px));
+  right: 0.9rem; left: auto;
+  z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(360px, calc(100vw - 1.8rem));
+  pointer-events: none;
+}
+.toast-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  border: 1px solid transparent;
+  padding: 11px 12px 11px 14px;
+  border-radius: 10px;
+  font-size: 13.5px; font-weight: 600; line-height: 1.35;
+  box-shadow: 0 10px 25px -10px rgba(15, 23, 42, .25);
+  pointer-events: auto;
+}
+.toast-icon { margin-top: 1px; font-size: 15px; flex: 0 0 auto; }
+.toast-close {
+  margin-left: auto; flex: 0 0 auto;
+  width: 22px; height: 22px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: .55; font-size: 12px; color: inherit;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.toast-close:hover { opacity: 1; background: rgba(15, 23, 42, .08); }
+
+@media (max-width: 640px) {
+  /* Phones: span the width so long messages wrap instead of truncating, and
+     sit below the sticky topbar rather than on top of it. */
+  .toast-stack {
+    left: 0.6rem; right: 0.6rem;
+    width: auto;
+    top: calc(0.6rem + env(safe-area-inset-top, 0px));
+  }
+}
+
+/* Tenant branding drawer on Portal Admin. On phones it behaves like a true
+   viewport-height sheet with its own scroll region, so the header/close button,
+   logo picker and domain controls cannot be clipped off-screen. */
+.portal-branding-overlay { padding: 0; }
+.portal-branding-drawer {
+  max-height: 100vh;
+  max-height: 100dvh;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 640px) {
+  .portal-branding-overlay {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .portal-branding-drawer {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0;
+  }
+}
+
+/* ============================================================
+   MODAL SHELL (components/ui.tsx <Modal>)
+   The backdrop colour used to be an inline `style` attribute. Moving it to a
+   class keeps ALL styling in the bundled stylesheet, which is what the strict
+   `style-src-elem 'self' 'nonce-…'` CSP expects, and gives one place to tune
+   the dialog on small screens.
+   ============================================================ */
+.spa-modal-backdrop {
+  background: rgba(15, 23, 42, .5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.spa-modal-card {
+  border-radius: 18px;
+  margin: 1rem 0;
+  max-height: calc(100vh - 2rem);
+  /* The CARD scrolls (not the backdrop and not each child) so arbitrary modal
+     bodies keep whatever internal layout they already had. */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* Sticky header so long dialog bodies keep their title + close button in
+   reach — previously you had to scroll back up to dismiss. */
+.spa-modal-head {
+  position: sticky; top: 0; z-index: 2;
+  background: #fff;
+}
+/* Sticky FOOTER, the counterpart to .spa-modal-head (added 2026-08-13).
+   `.spa-modal-card` is the scroll container (overflow-y:auto above), so a
+   sticky child pins against the card's own visible box, not the viewport.
+
+   WHY: measured with /tmp/uiprobe/sweep.py at 1024x640 (a 13" laptop with
+   browser chrome — not an exotic size), the "Create Demand File" wizard's
+   Cancel/Next bar sat at y=624..662 with the card scrolling 775px inside a
+   608px box. It WAS reachable by scrolling, so this is not the clipping bug
+   that broke the roles dialog — but a submit control you must hunt for is
+   still a defect, and on a 3-step wizard the Next button is the whole
+   interaction. Pinning it costs 4 lines and fixes every dialog that opts in.
+
+   Apply to the action row of any dialog whose body can exceed the card
+   height. Do NOT apply it to short dialogs — a pinned bar on a 200px form
+   just adds a redundant border. */
+.spa-modal-foot {
+  position: sticky; bottom: 0; z-index: 2;
+  background: #fff;
+}
+
+@media (max-width: 639px) {
+  /* Phone: bottom sheet. Full width, rounded top only, and it never grows
+     past the visible viewport (dvh accounts for the browser chrome). */
+  .spa-modal-backdrop { align-items: flex-end; }
+  .spa-modal-card {
+    margin: 0;
+    max-width: 100% !important;
+    border-radius: 18px 18px 0 0;
+    max-height: 92dvh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ============================================================
+   MOBILE HARDENING (v13)
+   ============================================================ */
+/* iOS zooms the viewport when a focused input's font-size is < 16px. Force
+   16px on real phones only, so desktop density is untouched. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select, textarea { font-size: 16px !important; }
+  .form-input, .form-select, .form-textarea { font-size: 16px !important; }
+}
+/* Notched devices: keep fixed chrome clear of the safe areas. */
+aside#sidebar { padding-bottom: env(safe-area-inset-bottom, 0); }
+@media (max-width: 1023px) {
+  aside#sidebar { padding-top: env(safe-area-inset-top, 0); }
+}
+/* Never let a long unbroken token (email, URL, passport no.) push the page
+   sideways on a phone. */
+@media (max-width: 640px) {
+  .card, .card-body, .state-block { overflow-wrap: anywhere; }
+  .spa-main-content { padding-bottom: 5.5rem !important; } /* room for the bot FAB */
+}
+/* Action button rows on phones: wrap instead of clipping. */
+@media (max-width: 640px) {
+  .page-actions { width: 100%; }
+  .page-actions > * { flex: 1 1 auto; justify-content: center; }
+}
+
+/* ============================================================
+   DTC BOT — mobile-first sheet + desktop panel
+   ============================================================ */
+#dtcbot-panel {
+  --dtc-radius: 18px;
+  box-shadow: 0 24px 64px -16px rgba(15, 23, 42, .38), 0 2px 8px rgba(15, 23, 42, .12);
+}
+.dtc-head { background: var(--brand-solid); }
+.dtc-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+.dtc-composer { padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)); }
+
+@media (max-width: 640px) {
+  /* Full-screen sheet on phones: dvh so the iOS keyboard doesn't cut the
+     composer off, safe-area padding, and no rounded corners / shadow. */
+  #dtcbot-panel {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    z-index: 120 !important;
+  }
+  #dtcbot-panel .dtc-head {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  }
+  #dtcbot-panel .dtc-msg { max-width: 92% !important; }
+  #dtcbot-panel .dtc-scroll { padding: 0.85rem 0.85rem 1.25rem !important; }
+  /* Bigger, thumb-friendly controls */
+  #dtcbot-panel .dtc-composer button { min-width: 44px; min-height: 44px; }
+  #dtcbot-panel .dtc-chip { min-height: 36px; font-size: 12.5px !important; }
+  #dtcbot-fab { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important; right: 1rem !important; }
+  /* Hide the FAB while the sheet is open so it can't overlap the composer. */
+  body.dtc-open #dtcbot-fab { display: none !important; }
+  body.dtc-open { overflow: hidden; }
+}
+/* Tablet / small laptop: dock the panel to the right edge, full height. */
+@media (min-width: 641px) and (max-width: 1023px) {
+  #dtcbot-panel { width: 380px !important; height: min(640px, 82vh) !important; }
+}
+
+/* ── Cards: static surfaces ──
+   No hover lift and no transform transition. A dashboard shows a dozen cards
+   at once; animating them on pointer-over made the page feel restless and
+   forced the compositor to keep layers alive for elements that are not even
+   interactive. Only the border reacts, which is enough to show grouping. */
+.card {
+  transition: border-color 160ms ease;
+}
+.card:hover { border-color: rgba(148, 163, 184, 0.45); }
+
+/* ── Buttons: colour-only feedback, no bounce ── */
+.btn { transition: background 140ms ease, border-color 140ms ease, color 140ms ease; }
+
+/* ── Data tables: cleaner header + row hover, aligned numerics ── */
+.data-table thead th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  /* Flat fill, not a gradient: the house style is restrained/enterprise, and a
+     sticky header also has to be fully OPAQUE so rows scrolling underneath it
+     do not show through. `border-bottom` is drawn as an inset shadow instead —
+     a real border on a sticky <th> disappears under `border-collapse`, which is
+     why previous attempts at a stuck header looked like it had no underline. */
+  background: #f8fafc;
+  box-shadow: inset 0 -1px 0 #e6ebf2;
+  white-space: nowrap;
+}
+.data-table tbody tr { transition: background 120ms ease; }
+.data-table tbody tr:hover { background: #f8fafc; }
+.data-table td, .data-table th { padding: 10px 14px; }
+.data-table .font-mono, .data-table td[data-numeric] { font-variant-numeric: tabular-nums; }
+
+/* ── Sticky table headers so long lists keep context while scrolling ──
+   BUG FIX (2026-08-02): this block used to declare `position: sticky` on the
+   header cells and stop there, which did nothing at all. `.table-scroll` sets
+   `overflow-x: auto`; per CSS overflow, when one axis is not `visible` the
+   other axis' used value becomes `auto` too — so `.table-scroll` WAS already a
+   scroll container in both axes. But it had no height limit, so it never
+   actually scrolled vertically (the document did), and a sticky element only
+   moves relative to its nearest scrollport. The header therefore sat at the
+   top of a box that never scrolled: sticky in name only.
+
+   The fix is to give the box a real, bounded height on large screens so it
+   becomes a genuine vertical scrollport. `max-height` (not `height`) means
+   short tables are completely unaffected — the box only starts scrolling once
+   the rows would have overflowed the viewport anyway, which is exactly when a
+   stuck header earns its keep. Phones and tablets are excluded: below 1024px
+   the list switches to the stacked-card layout and the document scroll is the
+   right model there. */
+.table-scroll { position: relative; }
+.data-table thead th { position: sticky; top: 0; z-index: 2; }
+@media (max-width: 640px) { .data-table.responsive-cards thead th { position: static; } }
+
+@media (min-width: 1024px) {
+  .table-scroll {
+    /* Floor of 420px so the grid never collapses to a letterbox on short
+       laptop viewports; otherwise it grows to fill what is left below the
+       topbar, breadcrumb band, page header and filter card. */
+    max-height: max(420px, calc(100dvh - 300px));
+    overflow-y: auto;
+    /* Do not hand the wheel back to the document mid-list. */
+    overscroll-behavior: contain;
+    /* Reserve the scrollbar track so columns do not shift by ~9px the moment
+       the list grows past the fold. */
+    scrollbar-gutter: stable;
+  }
+}
+
+/* ── Tabs: smooth, sharp active indicator ── */
+[role="tab"] { transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
+
+/* ── Consistent slim scrollbars everywhere (desktop) ── */
+@media (min-width: 1024px) {
+  * { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.4) transparent; }
+  *::-webkit-scrollbar { width: 9px; height: 9px; }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, .38);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, .55); background-clip: content-box; }
+  *::-webkit-scrollbar-track { background: transparent; }
+}
+
+/* ── Performance: skip rendering off-screen table rows in long lists ──
+   Scoped to plain (non-card) tables on ≥641px so the mobile stacked-card
+   layout is never affected. */
+@media (min-width: 641px) {
+  .data-table:not(.responsive-cards) tbody tr { content-visibility: auto; contain-intrinsic-size: auto 48px; }
+}
+
+/* ── Smooth, GPU-friendly drawer/side-sheet animations ── */
+.animate-slide-in-right { will-change: transform; }
+.animate-fade-in { will-change: opacity; }
+
+/* ── Inputs: crisper borders + brand focus ── */
+.form-input, input.form-input, select.form-input, textarea.form-input {
+  border-color: #d7dee8;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+.form-input:focus {
+  border-color: var(--brand, #0071e3);
+  box-shadow: 0 0 0 4px var(--brand-ring, rgba(0, 113, 227, 0.16));
+  outline: none;
+}
+
+/* ── Respect reduced-motion for all the new transitions ── */
+@media (prefers-reduced-motion: reduce) {
+  .card, .btn, .data-table tbody tr, [role="tab"] { transition: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   FIX (CSP + UX #3) — Login / Auth pages.
+
+   Previously `Login.tsx` (LOGIN_CSS) and `AuthPages.tsx` (AUTH_CSS) each
+   injected their own <style>{...}</style> block inline. Under the strict
+   style-src-elem 'self' 'nonce-…' CSP those injected <style> tags carried
+   NO nonce, so the browser blocked them and the pages rendered as a naked
+   white card floating on a broken layout (the visible "empty rectangle
+   next to Welcome back" bug reported 2026-07-21).
+
+   Both CSS blocks were verbatim duplicates apart from the class prefix
+   (.login-page vs .auth-page). Consolidated here as a single block that
+   applies to BOTH prefixes via a comma selector list, served from a real
+   self-hosted stylesheet — bundled by Vite into /static/spa/assets/*.css
+   which is on-origin and covered by style-src-elem 'self'. No inline
+   <style> and no CSP nonce plumbing required.
+   ───────────────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────
+   TENANT-AWARE HERO ART (2026-08-20).
+
+   `--brand-hero` / `--brand-hero-soft` are written by applyTenantBranding()
+   in lib/branding.ts, and ONLY when a tenant is resolved. On the Dogar root
+   portal the properties are never set, so each var() falls through to its
+   fallback -- which is the literal declaration that was here before -- and
+   the root login page renders identically. Nothing about Dogar is "restored"
+   or "reproduced": it is the same value in the same property.
+
+   This was a real, visible defect, not a nicety. `office-left.jpg` is a
+   photograph of Dogar's own logo wall, and it was being served full-height
+   on every partner office's login screen. Found by reading a screenshot
+   after the source-level branding suite had already gone green -- which is
+   exactly why the browser harness exists.
+   ───────────────────────────────────────────────────────────────────────── */
+.login-page .panel-left,
+.auth-page .panel-left {
+  position: relative;
+  background-color: #c8d6e0;
+  background-image: var(--brand-hero, url('/static/img/login/office-left.jpg'));
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
+.login-page .panel-left::after,
+.auth-page  .panel-left::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(135deg, rgba(16,36,60,.12) 0%, rgba(16,36,60,0) 60%, rgba(245,247,250,.5) 100%);
+}
+.login-page .brand-badge,
+.auth-page  .brand-badge {
+  position: absolute; bottom: 28px; left: 32px; z-index: 2;
+  background: rgba(255,255,255,.82); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.7); border-radius: 12px; padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.1);
+}
+.login-page .panel-right,
+.auth-page  .panel-right {
+  position: relative; background-color: #e8edf3;
+  background-image: var(--brand-hero-soft, url('/static/img/login/office-right.jpg'));
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
+.login-page .panel-right::before,
+.auth-page  .panel-right::before {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(240,244,248,.55); backdrop-filter: blur(10px); pointer-events: none;
+}
+.login-page .panel-right::after,
+.auth-page  .panel-right::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(270deg, rgba(255,255,255,0) 70%, rgba(245,247,250,.5) 100%);
+}
+.login-page .signin-card,
+.auth-page  .signin-card {
+  position: relative; z-index: 2;
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(18px) saturate(130%);
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow:
+    0 2px 4px  rgba(15,23,42,.04),
+    0 8px 24px rgba(15,23,42,.10),
+    0 24px 56px rgba(15,23,42,.10);
+  border-radius: 20px;
+}
+.login-page .field-input,
+.auth-page  .field-input {
+  background: rgba(241,245,249,.7);
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.login-page .field-input:focus,
+.auth-page  .field-input:focus {
+  background: #fff;
+  /* The focus ring follows the office accent. `--brand-rule` is already a
+     92%-toward-white mix of the tenant hue, so it reads as a soft halo at any
+     accent darkness without needing a second alpha channel. */
+  box-shadow: 0 0 0 3px var(--brand-rule);
+  outline: none;
+  border-color: var(--brand-solid);
+}
+/* The primary action on the page. Previously a hard-coded blue gradient, so a
+   partner office whose accent is #ff0000 still got a Dogar-blue "Sign In"
+   button -- the single most prominent control on their portal's first screen.
+   Now painted from the accent tokens, which means the button and the field
+   focus ring and the nav active state inside the app are all one colour by
+   construction rather than by three authors agreeing. */
+.login-page .btn-signin,
+.auth-page  .btn-signin {
+  background: linear-gradient(135deg, var(--brand-solid) 0%, var(--brand-solid-hover) 100%);
+  /* Foreground is the CHOSEN readable ink, not assumed white: readableOn()
+     already picked whichever of white/slate-900 clears WCAG AA on this accent,
+     so a pale-yellow office gets dark text instead of an invisible label. The
+     `!important` overrides Tailwind's `text-white` utility on the element,
+     which is a class selector and would otherwise win on specificity -- the
+     same trap that defeated the font token. */
+  color: var(--brand-on-solid) !important;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-solid) 35%, transparent);
+  transition: filter .15s, transform .12s, box-shadow .15s;
+}
+.login-page .btn-signin:hover:not(:disabled),
+.auth-page  .btn-signin:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand-solid) 42%, transparent);
+}
+.login-page .btn-signin:active:not(:disabled),
+.auth-page  .btn-signin:active:not(:disabled) { transform: translateY(1px); }
+.login-page .divider,
+.auth-page  .divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AUTH-PAGE ACCENT HELPERS (2026-08-20)
+
+   Login.tsx and AuthPages.tsx between them carried FOURTEEN hard-coded
+   `text-blue-600` / `bg-blue-600` / `focus:ring-blue-500` utilities: the
+   eyebrow chip and its icon tile, "Forgot password?", "Back to Sign In",
+   "Contact Support", the quick-link icon tiles and the remember-me checkbox.
+   Each one is a Tailwind CLASS selector, so no amount of token plumbing in
+   `:root` could reach them -- exactly the specificity trap that defeated
+   `--brand-font` until it was fixed at the theme level.
+
+   Rather than escalate specificity or scatter `style={{ color: 'var(--…)' }}`
+   across two files (which would have put the accent in four more places for
+   the next author to miss), the utilities are REPLACED at the call sites by
+   these three semantic classes. One definition, one place to change, and a
+   test can assert the raw utilities are absent.
+
+   `.auth-accent` deliberately does NOT set a hover colour of its own: the
+   links it replaces used `hover:underline`, which is untouched, and inventing
+   a second hover hue per tenant would need another derived token for no
+   visual gain.
+   ───────────────────────────────────────────────────────────────────────── */
+.login-page .auth-accent,
+.auth-page  .auth-accent { color: var(--brand-solid); }
+
+.login-page .auth-accent-tile,
+.auth-page  .auth-accent-tile {
+  background: var(--brand-solid);
+  color: var(--brand-on-solid);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--brand-solid) 30%, transparent);
+}
+/* Soft variant for the ContactSupport quick-link rows, where the tile sits on
+   an already-tinted surface and a solid accent would over-weight the row. */
+.login-page .auth-accent-tile-soft,
+.auth-page  .auth-accent-tile-soft {
+  background: var(--brand-tint);
+  color: var(--brand-solid);
+}
+/* Native control tinting. `accent-color` is the only way to recolour a real
+   checkbox without replacing it with a div, and keeping the real input is what
+   preserves keyboard and screen-reader behaviour. */
+.login-page .auth-accent-input,
+.auth-page  .auth-accent-input { accent-color: var(--brand-solid); }
+.login-page .auth-accent-input:focus-visible,
+.auth-page  .auth-accent-input:focus-visible {
+  outline: 2px solid var(--brand-solid);
+  outline-offset: 2px;
+}
+/* Shake animation for auth alerts (login-only, but harmless on auth-page). */
+.login-page .auth-alert,
+.auth-page  .auth-alert {
+  animation: authShake .4s cubic-bezier(.36,.07,.19,.97) both;
+}
+@keyframes authShake {
+  10%,90% { transform: translateX(-1px); }
+  20%,80% { transform: translateX( 2px); }
+  30%,50%,70% { transform: translateX(-3px); }
+  40%,60% { transform: translateX( 3px); }
+}
+/* Quick-link rows (used on ContactSupport / ForgotPassword). */
+.auth-page .quick-link {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: rgba(241,245,249,.55);
+  border: 1px solid rgba(226,232,240,.7);
+  border-radius: 12px;
+  transition: background .15s, border-color .15s;
+  text-decoration: none;
+}
+.auth-page .quick-link:hover {
+  background: rgba(219,234,254,.55);
+  border-color: rgba(147,197,253,.7);
+}
+.auth-page .ql-icon {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+/* Mobile banner (both flows). */
+@media (max-width: 1023px) {
+  .login-page,
+  .auth-page {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+  .login-page .panel-right,
+  .auth-page  .panel-right {
+    width: 100%;
+    min-height: auto;
+    background-position: center top;
+  }
+  .login-page .panel-right::before,
+  .auth-page  .panel-right::before {
+    background: rgba(240,244,248,.72);
+    backdrop-filter: blur(8px);
+  }
+  .login-page .mobile-banner,
+  .auth-page  .mobile-banner {
+    background-color: #1e3a5f;
+    /* Same fix as .panel-left, and it matters MORE here: below lg the left
+       panel is hidden entirely, so this banner is the only hero a phone user
+       ever sees. Leaving it hard-coded would have "fixed" the defect on
+       desktop only and left every mobile visitor looking at Dogar's office. */
+    background-image: var(--brand-hero, url('/static/img/login/office-left.jpg'));
+    background-size: cover; background-position: top center;
+    padding: clamp(18px, 5vw, 28px) 0;
+    position: relative;
+  }
+  .login-page .mobile-banner .logo-wrap {
+    background: rgba(15,30,55,.35);
+    padding: 12px 0;
+  }
+  .auth-page .mobile-banner::after {
+    content: ""; position: absolute; inset: 0;
+    background: rgba(16,36,60,.45);
+  }
+  .auth-page .mobile-banner .logo-wrap,
+  .login-page .mobile-banner .logo-wrap {
+    position: relative; z-index: 2;
+  }
+  .login-page .signin-card,
+  .auth-page  .signin-card {
+    width: min(100%, 420px);
+    border-radius: 18px;
+  }
+  .login-page footer,
+  .auth-page footer {
+    flex-wrap: wrap;
+    text-align: center;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 420px) {
+  .login-page .signin-card,
+  .auth-page  .signin-card {
+    padding: 1.35rem 1.15rem !important;
+  }
+}
+
+/* FIX 2026-07-21 (CSP) — Palette insert-button (shared between the
+   document designer's PalettePanel and DocumentCustomize.tsx). Was
+   previously inlined as <style>{...}</style> at the bottom of
+   DocumentCustomize.tsx, which the strict style-src-elem policy blocked.
+   Moved here so it's bundled into /static/spa/assets/*.css (same origin,
+   no nonce needed). */
+.dsg-insert-btn {
+  min-height: 34px;
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 650; color: #334155;
+  background: #fff; border: 1px solid #dbe4f0; border-radius: 8px;
+  padding: 7px 9px; text-align: left;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  transition: background .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.dsg-insert-btn i { width: 16px; color: #3b82f6; text-align: center; }
+.dsg-insert-btn:hover {
+  background: #eff6ff; color: #1d4ed8; border-color: #93c5fd;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, .10);
+  transform: translateY(-1px);
+}
+.dsg-insert-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.dsg-insert-btn:active { cursor: grabbing; transform: translateY(0); }
+
+/* ============================================================
+   Forest-green component overrides
+   ------------------------------------------------------------
+   Moved out of app/frontend/index.html (where the inline <style>
+   was blocked by CSP style-src-elem 'self' 'nonce-…'). Applied
+   via bundled index.css so no nonce is required.
+   ============================================================ */
+.theme-forest-green .btn-primary { background-color: #16a34a !important; }
+.theme-forest-green .btn-primary:hover { background-color: #15803d !important; }
+.theme-forest-green .form-input:focus,
+.theme-forest-green .form-select:focus,
+.theme-forest-green .form-textarea:focus {
+  border-color: #16a34a !important;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15) !important;
+}
+.theme-forest-green .nav-active { background-color: #dcfce7 !important; color: #15803d !important; }
+.theme-forest-green .nav-active i { color: #15803d !important; }
+.theme-forest-green .nav-sub-active { background-color: #dcfce7 !important; color: #15803d !important; }
+.theme-forest-green .btn-outline:hover { border-color: #16a34a !important; color: #16a34a !important; }

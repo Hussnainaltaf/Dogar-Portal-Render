@@ -1,0 +1,107 @@
+Dogar Portal v1.1.0 — production release
+
+Overseas-employment promoter (OEP) recruitment management portal: tracks the
+full pipeline from a foreign employer's demand file through candidate
+documentation, Protector of Emigrants clearance, medical, visa stamping and
+E-Number issuance to final deployment.
+
+Stack
+  FastAPI 0.115 / SQLAlchemy 2.0 / Pydantic 2.9, Jinja2 server-rendered
+  templates plus a prebuilt React SPA, SQLite or PostgreSQL, Alembic
+  migrations, served by uvicorn. No Node toolchain is required to deploy:
+  the SPA bundle and all vendor CSS/JS/fonts are prebuilt and self-hosted.
+
+Scope
+  178 REST endpoints across 22 routers, 31 data models, 49 granular
+  permissions with 3 role presets, subdomain-based multi-tenancy with
+  per-tenant database isolation, PDF document generation, and the canonical
+  10-stage candidate workflow:
+    new -> docs_pending -> docs_complete -> protector -> medical ->
+    visa_stamping -> e_number -> travel_ready -> deployed  (+ cancelled)
+
+Security
+  Completed the 2026-07-26 external audit response pass:
+    * stored-XSS sinks eliminated across BOTH frontends, enforced going
+      forward by a static scanner wired into the test suite
+    * strict nonce-based CSP for script-src and style-src-elem, and no style
+      exception at all on the standalone document routes (see below)
+    * JWT in httpOnly cookies with CSRF double-submit protection
+    * login brute-force throttling with proxy-aware client identification
+    * account-enumeration fix on the password-reset flow
+    * no credentials hardcoded anywhere; all secrets are environment-driven
+
+Performance
+  List endpoints are index-backed and measured, not assumed:
+    * composite sort indexes on reminders, demands and clients
+    * the candidates list sort key is denormalised onto an indexed column
+      maintained by database triggers, removing a per-row correlated
+      subquery: 14.2 ms -> 1.3 ms on a 2,675-row set, and deep pagination
+      is now flat (page 200 costs the same as page 1 instead of 18.4 ms)
+    * an integrity auditor (scripts/verify_sort_key.py) plus 12 tests keep
+      the denormalised value provably equal to the value it replaces
+  See PROJECT_DOCUMENTATION.md section 4.5 for the measurements, including
+  the approaches that were tried and rejected.
+
+PDF template geometry (2026-08-03)
+  Templates overlay text onto scans of real government and bank forms, so a
+  field is correct only if measured against that scan's printed rules. Two
+  defects were found by RENDERING the output rather than reasoning about it:
+    * OEP Form page 1 printed 11 of 13 fields on semantically wrong rows --
+      the emigrant's CNIC on the OEP agency-name line, the address on the
+      name line, the e-mail on the father's-name line, the generation date
+      inside the fee table, and four fields with no page-1 question at all
+      dropped onto agency office-use rows. All re-homed onto measured rows,
+      with rows 6/8/10/12/17 rebuilt as their real character grids.
+    * .gitignore's unanchored "data/" pattern also matched app/data/, so the
+      shipped geometry snapshot -- the ONLY route by which correct
+      coordinates reach a fresh install, since Alembic creates no templates
+      -- could never be committed. Anchored to /data/; live databases and
+      .env remain ignored. Release ZIPs were never affected.
+  Both are now regression-tested and the tests are mutation-verified.
+  PROJECT_DOCUMENTATION.md section 4.14 records the measurement method and
+  the two pitfalls that caused repeated wrong passes.
+
+Zero-exception CSP for standalone documents (2026-08-04)
+  The policy carried one deliberate hole, style-src-attr 'unsafe-inline',
+  because CSP has no nonce mechanism for style attributes: a nonce attaches
+  to an element and style="..." is not one, so the exception cannot be
+  replaced by a nonce -- only deleted, which means the attributes have to go.
+  app/core/style_hoist.py now hoists every server-rendered style attribute
+  into a nonced <style> element behind a data-csp-h hook, and the four
+  standalone document routes (letterhead, receipts, designer print, candidate
+  profile print) run with style-src-attr 'none'. The tightening is
+  per-response: the Jinja and SPA shells keep the accepted exception, because
+  safe_dom.js builds nodes at runtime via setAttribute('style').
+    * cascade fidelity is preserved by a doubled selector --
+      [data-csp-h="hN"][data-csp-h], specificity (0,2,0) -- which outranks
+      the documents' class rules while staying below the !important print
+      overrides that must keep winning
+    * verified in Chromium, not on paper: computed-style equivalence between
+      original and hoisted output showed 0 property and 0 geometry diffs
+      across two documents, and all four live routes served under the
+      enforced header reported 0 CSP violations with 0 style attributes left
+    * two defects were found while wiring it up and are now pinned by tests:
+      a regex-segmented scan let a </style><script> literal sitting inside
+      ANOTHER attribute's value forge a segment boundary, so a real style
+      attribute went unsanitised; and splitting declarations on ';' cut
+      url('data:image/png;base64,...') in half, which would have rendered
+      every document background blank
+  PROJECT_DOCUMENTATION.md section 7.3.1 records the design, the browser
+  measurements, and the CSSOM exemption that bounds what hoisting can cover.
+
+Quality gates
+  1120 automated tests passing, ruff clean. (1122 are collected; the 2 skips are
+  data-dependency skips with stated reasons, not silent failures: the geometry
+  snapshot-staleness check skips when the untracked local data/ DB has been
+  written since the snapshot was committed -- a mismatch there cannot tell a
+  stale snapshot from locally edited template geometry -- and one status-stream
+  case skips when there are no candidate/job_category rows to assign. Run with
+  scripts/run_suite_chunked.sh: one pytest process per chunk, because a single
+  process is OOM-killed partway through the 985 MB sandbox ceiling.) The shipped documentation is
+  itself machine-checked (structure, links and every documented count are
+  verified against the code) so the docs cannot silently drift.
+
+Getting started
+  See PROJECT_DOCUMENTATION.md for the complete product, installation,
+  configuration, deployment and operations reference. Copy .env.example to
+  .env and fill in every value before first run.

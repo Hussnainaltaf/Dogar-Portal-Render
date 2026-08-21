@@ -1,0 +1,55 @@
+fastapi==0.121.1           # SEC-AUDIT 2026-08-07: bumped from 0.115 to allow patched Starlette
+starlette==0.49.1          # SEC-AUDIT 2026-08-07: patches PYSEC-2026-1941/1942/1943 (multipart/HTTP DoS). Remaining Starlette CVEs require the 1.x breaking major (unsupported by FastAPI 0.121) and are deferred.
+uvicorn[standard]==0.32.0
+sqlalchemy==2.0.35
+pydantic==2.9.2
+pydantic-settings==2.5.2
+PyJWT==2.13.0              # SEC-AUDIT 2026-08-07: AUTH-CRITICAL — patches PYSEC-2026-120/175..179 (JWT verification CVEs)
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.31   # SEC-AUDIT 2026-08-07: patches PYSEC-2026-1851/1852/3036..3040 (multipart DoS)
+jinja2==3.1.6              # SEC-AUDIT 2026-08-07: patches PYSEC-2026-1471/1472/1475 (sandbox/template CVEs)
+aiofiles==24.1.0
+reportlab==4.2.5
+Pillow>=12.3.0             # SEC-AUDIT 2026-08-07: <12.3.0 has PYSEC-2026-2253..3453 (image-parsing CVEs)
+qrcode==7.4.2
+freetype-py==2.5.1    # needs the freetype system library installed on the host
+pypdf==6.14.2              # SEC-AUDIT 2026-08-07: patches 40+ pypdf CVEs (PYSEC-2026-1827..3613); 6.x API verified by full test suite
+python-dateutil==2.9.0
+email-validator==2.2.0
+openai>=1.30.0,<2.0.0  # FIX-05: 2.38.0 does not exist; stable SDK is 1.x
+PyYAML==6.0.3
+alembic==1.13.3
+greenlet==3.5.1
+
+# PostgreSQL driver -- required for the multi-tenant Postgres deployment
+# (each tenant lives in its OWN Postgres database, mirroring the previous
+# SQLite file-per-tenant isolation model). SQLite continues to work as a
+# development backend; the driver is unused when DATABASE_URL is sqlite://.
+# Needs the system `libpq5` package (Debian/Ubuntu) or `libpq` (Alpine).
+psycopg2-binary==2.9.12
+
+# --- Structured logging & monitoring ---
+python-json-logger==2.0.7
+sentry-sdk[fastapi]==2.8.0  # SEC-AUDIT 2026-08-07: patches PYSEC-2026-1917 (env-var leak)
+prometheus-fastapi-instrumentator==7.0.0
+slowapi==0.1.9
+
+# --- Optional features ---
+# All packages below are imported with try/except — the app boots and runs
+# without them. Install them to unlock the listed features.
+arabic-reshaper==3.0.0  # Arabic letterhead PDF rendering
+python-bidi==0.4.2      # Arabic right-to-left text ordering
+pytesseract==0.3.13     # Offline passport OCR (also needs `tesseract-ocr` OS binary)
+python-barcode==0.15.1  # Barcode-image generation in PDFs (letterhead + pdf_engine)
+pillow-heif==1.3.0      # HEIC/HEIF photo support — iPhone passport photo uploads
+
+# --- Optional Redis cache ---
+# Install to enable 60-second response caching for candidate/demand lists.
+# Without these the app uses a bounded in-memory TTL cache and runs normally.
+redis==5.0.8
+hiredis==3.0.0
+
+# H-2 FIX: test-only dependencies moved to requirements-dev.txt
+# (playwright alone pulls ~300 MB of browser binaries — too heavy for
+# production installs). Run: pip install -r requirements-dev.txt

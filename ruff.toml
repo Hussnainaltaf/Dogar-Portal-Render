@@ -1,0 +1,46 @@
+# Ruff configuration for the OEP portal backend.
+# Kept intentionally focused: catch real bugs (undefined names, unused imports,
+# bare excepts, mutable defaults) without drowning CI in cosmetic style noise.
+
+target-version = "py311"
+line-length = 120
+
+exclude = [
+    ".git",
+    "venv",
+    ".venv",
+    "alembic",
+    "migrations",
+    "app/frontend",
+    "app/static",
+    "data",
+    "build",
+    "dist",
+    "__pycache__",
+]
+
+[lint]
+# E/W  = pycodestyle errors/warnings
+# F    = pyflakes (undefined names, unused imports/vars)
+# B    = flake8-bugbear (likely bugs: mutable defaults, etc.)
+# UP   = pyupgrade (modern syntax)
+# I    = isort (import ordering)
+select = ["E", "F", "B", "UP", "I"]
+
+ignore = [
+    "E501",   # line-too-long (handled by formatter, not worth failing CI)
+    "E402",   # module-level import not at top (needed for env setup in some modules)
+    "E701",   # multiple statements on one line (colon) — deliberate compact style
+    "E702",   # multiple statements on one line (semicolon) — deliberate compact style
+    "E731",   # lambda assignment — used intentionally for small local callables
+    "E741",   # ambiguous variable name (l/I/O) — pre-existing, low risk
+    "B008",   # function call in default arg (FastAPI Depends() idiom)
+    "UP007",  # Optional[X] vs X | None (keep explicit Optional for clarity)
+    "UP035",  # deprecated typing imports (gradual migration)
+    "UP006",  # use `dict`/`list` for annotations (gradual migration)
+    "UP038",  # non-pep604 isinstance (gradual migration)
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["F401", "F811", "B011"]
+"__init__.py" = ["F401"]

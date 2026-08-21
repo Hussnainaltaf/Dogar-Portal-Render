@@ -1,0 +1,112 @@
+# ======================================================================
+# Dogar Trading Corporation Portal — Docker Compose stack
+# ======================================================================
+#
+# Quick-start (SQLite, single-machine):
+#     cp .env.example .env
+#     sed -i "s|^SECRET_KEY=.*|SECRET_KEY=\"$(openssl rand -hex 32)\"|" .env
+#     docker compose up -d
+#
+# Production with PostgreSQL (multi-tenant, horizontally scalable):
+#     1. Uncomment the `db` and `pgadmin` services below
+#     2. Uncomment `DATABASE_URL` and `TENANT_DB_URL_TEMPLATE` in the
+#        portal service environment section
+#     3. Set a strong POSTGRES_PASSWORD
+#     4. docker compose --profile postgres up -d
+#
+# Stop:
+#     docker compose down
+# Tear down including volumes:
+#     docker compose down -v
+# ======================================================================
+
+services:
+  # ────────────────────────────────────────────────────────────────────
+  # Main application (FastAPI + React SPA)
+  # ────────────────────────────────────────────────────────────────────
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dogar-portal:latest
+    container_name: dogar-portal
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      # Force production hardening — config.py refuses to boot with weak
+      # secrets when this is set, regardless of what .env says.
+      ENV: production
+
+      # ── PostgreSQL (uncomment to switch from SQLite) ────────────────
+      # DATABASE_URL: postgresql://dogar:${POSTGRES_PASSWORD:-REPLACE_ME}@db:5432/dogar_control
+      # TENANT_DB_URL_TEMPLATE: postgresql://dogar:${POSTGRES_PASSWORD:-REPLACE_ME}@db:5432/tenant_{slug}
+    volumes:
+      - dogar-data:/app/data                              # SQLite DB (control plane)
+      - dogar-uploads:/app/app/static/uploads             # candidate photos, OCR'd passports
+      - dogar-generated:/app/app/static/uploads/generated_pdfs
+      - dogar-pdf-bg:/app/app/static/pdf_backgrounds     # uploaded letterhead / background-scans
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/ping", "-o", "/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false  # optional — portal starts even without PostgreSQL
+
+  # ────────────────────────────────────────────────────────────────────
+  # PostgreSQL (optional — uncomment for multi-tenant production deploys)
+  # ────────────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: dogar-postgres
+    restart: unless-stopped
+    profiles:
+      - postgres   # only started when --profile postgres is passed
+    environment:
+      POSTGRES_USER: dogar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-REPLACE_ME}
+      POSTGRES_DB: dogar_control
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dogar -d dogar_control"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ────────────────────────────────────────────────────────────────────
+  # pgAdmin (optional — web UI for PostgreSQL management)
+  # ────────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dogar-pgadmin
+    restart: unless-stopped
+    profiles:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@yourcompany.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-REPLACE_ME}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dogar-data:
+  dogar-uploads:
+  dogar-generated:
+  dogar-pdf-bg:
+  pgdata:
+  pgadmin-data:

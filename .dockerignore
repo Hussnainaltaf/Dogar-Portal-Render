@@ -1,0 +1,98 @@
+# ===========================================================================
+# .dockerignore — prevent secrets, live data, caches, and dev artifacts from
+# leaking into Docker image layers. Consider EVERYTHING in an image layer
+# permanently published — even files you later DELETE in a subsequent layer.
+# ===========================================================================
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+*.env.local
+!.env.example
+
+# ── Live data (real records are the operator's private property) ─────────────
+# Match the WHOLE data tree, including nested tenant DBs (data/tenants/*.db*)
+# and backup archives (data/backups/*.zip). A bare "data/*.db" only matches
+# the top level and leaked live tenant databases into image layers (H-audit
+# 2026-07-24). The directory itself is recreated empty at build time
+# (Dockerfile: RUN mkdir -p data data/tenants ...), so excluding all of it is safe.
+data/
+# (Redundant explicit patterns kept as documentation / defense-in-depth.)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/**/*.db
+data/**/*.db-shm
+data/**/*.db-wal
+data/backups/
+data/tenants/
+data/*.bak
+data/*.backup
+
+# ── User-uploaded content ───────────────────────────────────────────────────
+app/static/uploads/photos/*
+!app/static/uploads/photos/.gitkeep
+app/static/uploads/avatars/*
+!app/static/uploads/avatars/.gitkeep
+app/static/uploads/generated_pdfs/*
+!app/static/uploads/generated_pdfs/.gitkeep
+
+# ── Version control ─────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Python caches & virtualenvs ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+*.egg
+
+# ── Node.js dependencies (built inside the image; never shipped) ─────────────
+# Anchored patterns for the two known dep trees PLUS a catch-all so that any
+# node_modules/ anywhere in the tree is excluded (the tailwind_build subtree —
+# ~1,359 files / ~10.8 MB of dev deps — leaked in the C-audit 2026-07-24).
+node_modules/
+**/node_modules/
+app/frontend/node_modules/
+app/frontend/dist/
+app/tailwind_build/node_modules/
+
+# ── Test & CI artifacts ──────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── PM2 / process manager state ──────────────────────────────────────────────
+.pm2/
+logs/
+*.log
+
+# ── OS junk ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# ── Crash dumps ──────────────────────────────────────────────────────────────
+core
+core.*
+*.core
+
+# ── Archives ─────────────────────────────────────────────────────────────────
+*.tar.gz
+*.zip
+*.tar
+
+# ── IDE / Editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-*
