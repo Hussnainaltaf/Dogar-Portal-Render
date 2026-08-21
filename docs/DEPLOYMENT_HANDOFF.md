@@ -36,6 +36,8 @@ The production environment includes generated bootstrap credentials and the requ
 
 ## Uploaded real-data backup
 
+The repository now includes [`scripts/migrate_staged_database.py`](../scripts/migrate_staged_database.py) and [`docs/MIGRATE_STAGED_DATABASE.md`](MIGRATE_STAGED_DATABASE.md). The command is dry-run by default, requires an explicit `--apply` flag, performs conflict-safe inserts, and verifies source/target row counts. It must be run against durable storage rather than the free Render filesystem.
+
 The uploaded file `/home/ubuntu/upload/backup-29-07-2026.sql.gz` is plain UTF-8 SQL despite its `.gz` suffix. It was not decompressed or executed blindly. The repository’s existing idempotent legacy importer staged it in an isolated local database at `/home/ubuntu/work/data-staging/dogar_trading.db`.
 
 | Staged legacy data | Imported count |
