@@ -2,9 +2,9 @@ services:
   - type: web
     name: dogar-portal-com
     runtime: docker
-    repo: https://github.com/Hussnainaltaf/Dogar-Portal.Com
+    repo: https://github.com/Hussnainaltaf/Dogar-Portal-Render
     branch: main
-    plan: starter
+    plan: free
     region: singapore
     healthCheckPath: /api/ping
     autoDeploy: true
@@ -30,7 +30,3 @@ services:
         sync: false
       - key: DEFAULT_ADMIN_PASSWORD
         sync: false
-    disk:
-      name: dogar-portal-data
-      mountPath: /app/data
-      sizeGB: 10
