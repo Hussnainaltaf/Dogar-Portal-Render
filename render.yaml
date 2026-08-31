@@ -4,10 +4,17 @@ services:
     runtime: docker
     repo: https://github.com/Hussnainaltaf/Dogar-Portal-Render
     branch: main
-    plan: free
+    # SQLite and uploaded documents require persistent storage.
+    # Keep one instance until the documented PostgreSQL migration is completed.
+    plan: starter
     region: singapore
     healthCheckPath: /api/ping
     autoDeploy: true
+    maxShutdownDelaySeconds: 120
+    disk:
+      name: dogar-portal-data
+      mountPath: /app/data
+      sizeGB: 10
     dockerfilePath: ./Dockerfile
     envVars:
       - key: ENV
