@@ -10,7 +10,6 @@ services:
     region: singapore
     healthCheckPath: /api/ping
     autoDeploy: true
-    maxShutdownDelaySeconds: 120
     disk:
       name: dogar-portal-data
       mountPath: /app/data
