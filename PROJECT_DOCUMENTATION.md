@@ -2432,7 +2432,7 @@ curl -fsS http://localhost:3000/api/health
 python3 scripts/scan_xss_sinks.py --check         # CI gate: 0 findings
 ```
 
-**822 test functions across 66 modules** (1120 executed cases passing, counting
+**828 test functions across 67 modules** (1120 executed cases passing, counting
 parametrised variants; 1122 are collected -- the 2 remaining are data-dependency
 skips with stated reasons, not silent failures), covering authentication, the
 RBAC matrix, route gating,
@@ -2924,7 +2924,7 @@ dogar-portal/
 │       ├── spa/                 # Compiled React SPA (USE_SPA=true)
 │       └── uploads/             # User uploads (persist + back up)
 ├── alembic/                     # Migrations
-├── tests/                       # 822 test functions
+├── tests/                       # 828 test functions
 ├── scripts/                     # Ops, migration, security, release tooling
 ├── docs/                        # Supplementary technical docs
 ├── data/                        # Databases (NOT shipped; back this up)

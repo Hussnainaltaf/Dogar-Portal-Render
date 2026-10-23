@@ -19,6 +19,25 @@ log = logging.getLogger("dtc.security")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def validate_password_strength(password: str, current_password: str | None = None) -> None:
+    """Validate the portal-wide password policy.
+
+    All password-change and password-reset flows call this helper so an
+    authenticated self-service route cannot weaken the policy enforced by the
+    recovery flow.
+    """
+    if len(password or "") < 12:
+        raise ValueError("Password must be at least 12 characters")
+    if password.strip().lower() in {
+        "admin123", "admin", "password", "password123", "123456", "changeme",
+    }:
+        raise ValueError("Password is on the known weak-password list")
+    if password.isdigit():
+        raise ValueError("Password is on the known weak-password list")
+    if current_password is not None and password == current_password:
+        raise ValueError("New password must differ from the current one")
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 

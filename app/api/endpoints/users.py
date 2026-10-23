@@ -27,10 +27,12 @@ from app.core.permissions import require_permission
 # routes that must never be delegatable, and keeping the import documents that
 # the switch below was a decision rather than an oversight.
 # See section 4.12 of PROJECT_DOCUMENTATION.md.
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, validate_password_strength, verify_password
 from app.core.tenancy import get_tenant_db
+from app.core.permissions import validate_role_name, validate_role_permissions
 from app.models import User
 from app.models.lookups import LoginHistory, Role
+from app.services.password_reset import revoke_unused_reset_tokens
 from app.schemas.schemas import (
     PasswordChange,
     ProfileUpdate,
@@ -139,9 +141,13 @@ def change_my_password(
         raise HTTPException(404, "User not found")
     if not verify_password(payload.current_password, obj.password_hash):
         raise HTTPException(400, "Current password is incorrect")
-    if not payload.new_password or len(payload.new_password) < 6:
-        raise HTTPException(400, "New password must be at least 6 characters")
+    try:
+        validate_password_strength(payload.new_password, payload.current_password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     obj.password_hash = hash_password(payload.new_password)
+    obj.must_change_password = False
+    revoke_unused_reset_tokens(db, obj.id)
     db.commit()
     return {"ok": True, "message": "Password changed successfully"}
 
@@ -159,6 +165,11 @@ def create_user(payload: UserCreate, db: Session = Depends(get_tenant_db),
         raise HTTPException(400, "Email already registered")
     data = payload.model_dump()
     pwd = data.pop("password")
+    role_name = (data.get("role") or "staff").strip().lower()
+    if (data.get("is_super_admin") or role_name == "admin") and not admin.is_super_admin:
+        raise HTTPException(403, "Only the control-plane super-admin may create privileged accounts")
+    data["role"] = role_name
+    data["is_super_admin"] = bool(data.get("is_super_admin")) and bool(admin.is_super_admin)
     obj = User(**data, password_hash=hash_password(pwd))
     db.add(obj)
     db.commit()
@@ -180,8 +191,18 @@ def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_ten
         raise HTTPException(403, "Cannot modify the permanent super-admin account")
 
     data = payload.model_dump(exclude_unset=True)
+    if "role" in data and data["role"]:
+        new_role = data["role"].strip().lower()
+        if new_role == "admin" and not admin.is_super_admin:
+            raise HTTPException(403, "Only the control-plane super-admin may assign the Admin role")
+        data["role"] = new_role
     if "password" in data and data["password"]:
+        try:
+            validate_password_strength(data["password"])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         obj.password_hash = hash_password(data.pop("password"))
+        revoke_unused_reset_tokens(db, obj.id)
     elif "password" in data:
         data.pop("password")
 
@@ -554,15 +575,18 @@ def list_roles(db: Session = Depends(get_tenant_db),
 @router.post("/roles")
 def create_role(payload: dict, db: Session = Depends(get_tenant_db),
                 admin: User = Depends(require_permission("roles:edit"))):
-    if not payload.get("name"):
-        raise HTTPException(400, "Name is required")
-    if db.query(Role).filter(Role.name == payload["name"]).first():
+    try:
+        role_name = validate_role_name(payload.get("name"))
+        permissions = validate_role_permissions(role_name, payload.get("permissions", []))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if db.query(Role).filter(Role.name.ilike(role_name)).first():
         raise HTTPException(400, "Role name already exists")
     role = Role(
-        name=payload["name"],
+        name=role_name,
         description=payload.get("description", ""),
         is_system=False,
-        permissions=json.dumps(payload.get("permissions", [])),
+        permissions=json.dumps(permissions),
     )
     db.add(role); db.commit(); db.refresh(role)
     return {"id": role.id, "name": role.name}
@@ -589,11 +613,19 @@ def update_role(role_id: int, payload: dict, db: Session = Depends(get_tenant_db
                          "Create a custom role instead if you need to scope down."
                 )
     if "name" in payload and not role.is_system:
-        role.name = payload["name"]
+        try:
+            role.name = validate_role_name(payload["name"])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     if "description" in payload:
         role.description = payload["description"]
     if "permissions" in payload:
-        role.permissions = json.dumps(payload["permissions"])
+        try:
+            role.permissions = json.dumps(validate_role_permissions(
+                role.name, payload["permissions"], is_system=bool(role.is_system)
+            ))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
     db.commit(); return {"ok": True}
 
 

@@ -7,11 +7,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    validate_password_strength,
+    verify_password,
+)
 from app.core.tenancy import get_tenant_db
 from app.models import User
 from app.models.lookups import LoginHistory, PasswordResetToken, SupportMessage
 from app.schemas.schemas import LoginRequest, TokenResponse
+from app.services.password_reset import claim_reset_token, revoke_unused_reset_tokens
 
 router = APIRouter()
 log = logging.getLogger("dtc.auth")
@@ -191,16 +197,14 @@ def change_password(
     if not verify_password(current, user.password_hash):
         raise HTTPException(400, "Current password is incorrect")
 
-    # Strength rules -- match the production guardrails in config.py
-    if len(new_pw) < 12:
-        raise HTTPException(400, "New password must be at least 12 characters long")
-    if new_pw.strip().lower() in {"admin123", "admin", "password", "123456", "changeme"}:
-        raise HTTPException(400, "That password is on the well-known weak-password list")
-    if new_pw == current:
-        raise HTTPException(400, "New password must differ from the current one")
+    try:
+        validate_password_strength(new_pw, current)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     user.password_hash = hash_password(new_pw)
     user.must_change_password = False
+    revoke_unused_reset_tokens(db, user.id)
     db.commit()
     return {"ok": True, "message": "Password updated successfully"}
 
@@ -383,27 +387,37 @@ def reset_password(payload: dict, db: Session = Depends(get_tenant_db)):
     new_password = payload.get("new_password") or ""
     if not token or not new_password:
         raise HTTPException(400, "Token and new password are required")
-    # H-04: Align with change-password policy -- 6-char minimum was weaker than policy
-    if len(new_password) < 12:
-        raise HTTPException(400, "Password must be at least 12 characters")
-    if new_password.strip().lower() in {"admin123", "password", "123456", "changeme", "admin"}:
-        raise HTTPException(400, "Password is on the known weak-password list")
+    try:
+        validate_password_strength(new_password)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     token_hash = hashlib.sha256(token.encode()).hexdigest()
+    # Claim before reading/updating the user. The conditional UPDATE is atomic,
+    # so two concurrent redemptions cannot both pass the old check-then-set
+    # sequence.
+    if not claim_reset_token(db, token_hash):
+        existing = db.query(PasswordResetToken).filter(
+            PasswordResetToken.token_hash == token_hash
+        ).first()
+        if not existing:
+            raise HTTPException(400, "Invalid or expired token")
+        if existing.used_at:
+            raise HTTPException(400, "This reset link has already been used")
+        raise HTTPException(400, "This reset link has expired")
+
     pr = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
     if not pr:
+        db.rollback()
         raise HTTPException(400, "Invalid or expired token")
-    if pr.used_at:
-        raise HTTPException(400, "This reset link has already been used")
-    if pr.expires_at < datetime.now(UTC):
-        raise HTTPException(400, "This reset link has expired")
 
     user = db.query(User).filter(User.id == pr.user_id).first()
     if not user:
+        db.rollback()
         raise HTTPException(400, "User not found")
 
     user.password_hash = hash_password(new_password)
-    pr.used_at = datetime.now(UTC)
+    revoke_unused_reset_tokens(db, user.id, exclude_id=pr.id)
     db.commit()
     return {"ok": True, "message": "Password updated successfully. You can now sign in."}
 

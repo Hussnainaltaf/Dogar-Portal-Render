@@ -151,6 +151,20 @@ def _admin_only(user: User, db: Session, perm: str = "settings:tenants"):
                         detail=f"Requires the '{perm}' permission")
 
 
+def _require_control_plane_super_admin(request: Request, user: User) -> User:
+    """Refuse tenant-local identities at the control-plane boundary."""
+    if getattr(request.state, "tenant", None) is not None:
+        raise HTTPException(403, "Control-plane administration is only available from the root portal")
+    return user
+
+
+def require_control_plane_super_admin(
+    request: Request,
+    user: User = Depends(get_current_user),
+) -> User:
+    return _require_control_plane_super_admin(request, user)
+
+
 def _serialize(t: Tenant) -> dict:
     logo_url = None
     if t.logo_filename:
@@ -233,7 +247,7 @@ def _save_tenant_asset(slug: str, file: UploadFile, kind: str) -> str:
 
 
 @router.get("")
-def list_tenants(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_tenants(db: Session = Depends(get_db), user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     rows = db.query(Tenant).order_by(Tenant.created_at.desc()).all()
     return {"items": [_serialize(r) for r in rows], "total": len(rows)}
@@ -241,7 +255,7 @@ def list_tenants(db: Session = Depends(get_db), user: User = Depends(get_current
 
 @router.get("/{tenant_id}")
 def get_tenant(tenant_id: int, db: Session = Depends(get_db),
-               user: User = Depends(get_current_user)):
+               user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     t = db.query(Tenant).get(tenant_id)
     if not t:
@@ -251,7 +265,7 @@ def get_tenant(tenant_id: int, db: Session = Depends(get_db),
 
 @router.post("", status_code=201)
 def create_tenant(payload: TenantCreate, db: Session = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(require_control_plane_super_admin)):
     """Provision a NEW portal copy for another business partner.
 
     Steps:
@@ -316,7 +330,7 @@ def create_tenant(payload: TenantCreate, db: Session = Depends(get_db),
 @router.put("/{tenant_id}")
 def update_tenant(tenant_id: int, payload: TenantUpdate,
                   db: Session = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     t = db.query(Tenant).get(tenant_id)
     if not t:
@@ -332,7 +346,7 @@ def update_tenant(tenant_id: int, payload: TenantUpdate,
 @router.put("/{tenant_id}/features")
 def update_features(tenant_id: int, payload: FeaturesUpdate,
                     db: Session = Depends(get_db),
-                    user: User = Depends(get_current_user)):
+                    user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     t = db.query(Tenant).get(tenant_id)
     if not t:
@@ -349,7 +363,7 @@ def update_features(tenant_id: int, payload: FeaturesUpdate,
 
 @router.delete("/{tenant_id}")
 def delete_tenant(tenant_id: int, db: Session = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     t = db.query(Tenant).get(tenant_id)
     if not t:
@@ -371,7 +385,7 @@ def delete_tenant(tenant_id: int, db: Session = Depends(get_db),
 
 @router.get("/_meta/overview")
 def portal_admin_overview(db: Session = Depends(get_db),
-                          user: User = Depends(get_current_user)):
+                          user: User = Depends(require_control_plane_super_admin)):
     """Super-admin command-centre data: per-tenant DB stats + a real-time
     cross-portal activity feed (recent logins, demand-file activity and
     candidate-processing stats). The control (main) portal is included as
@@ -471,7 +485,7 @@ def portal_admin_overview(db: Session = Depends(get_db),
 
 
 @router.get("/_meta/feature-defaults")
-def feature_defaults(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def feature_defaults(db: Session = Depends(get_db), user: User = Depends(require_control_plane_super_admin)):
     _admin_only(user, db)
     return Tenant.default_features()
 
@@ -483,7 +497,7 @@ def feature_defaults(db: Session = Depends(get_db), user: User = Depends(get_cur
 def upload_tenant_logo(tenant_id: int,
                        file: UploadFile = File(...),
                        db: Session = Depends(get_db),
-                       user: User = Depends(get_current_user)):
+                       user: User = Depends(require_control_plane_super_admin)):
     """Upload the tenant's company logo (PNG/JPG only).
 
     Stored as ``data/tenants/<slug>/logo_<rand>.<ext>`` and served via
@@ -552,7 +566,7 @@ def set_tenant_custom_domain(
     tenant_id: int,
     payload: dict = Body(...),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_control_plane_super_admin),
 ):
     """Bind or unbind a custom domain to a tenant.
 
@@ -617,7 +631,7 @@ def set_tenant_custom_domain(
 @router.get("/_meta/custom-domains")
 def list_active_custom_domains(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_control_plane_super_admin),
 ):
     """Return every active tenant's custom domain.
 
@@ -640,7 +654,7 @@ def list_active_custom_domains(
 def upload_tenant_letterhead(tenant_id: int,
                              file: UploadFile = File(...),
                              db: Session = Depends(get_db),
-                             user: User = Depends(get_current_user)):
+                             user: User = Depends(require_control_plane_super_admin)):
     """Upload the tenant's letterhead background image.
 
     The letterhead is used by the per-tenant document renderer
@@ -670,7 +684,7 @@ def upload_tenant_letterhead(tenant_id: int,
 @router.put("/{tenant_id}/branding")
 def update_tenant_branding(tenant_id: int, payload: BrandingUpdate,
                            db: Session = Depends(get_db),
-                           user: User = Depends(get_current_user)):
+                           user: User = Depends(require_control_plane_super_admin)):
     """Set the per-tenant enterprise identity (office name, demand
     file format, receipt template, subtitle, primary color)."""
     _admin_only(user, db, "settings:branding")

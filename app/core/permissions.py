@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Optional, Sequence
 
 from fastapi import Depends, HTTPException, Request, status
@@ -147,6 +148,35 @@ def all_permission_keys() -> list[str]:
         for item in group["items"]:
             out.append(item["key"])
     return out
+
+
+_RESERVED_ROLE_NAMES = frozenset({"admin", "manager", "staff", "agent"})
+
+
+def validate_role_name(name: str) -> str:
+    """Normalize and validate a role name before it becomes an authority."""
+    normalized = str(name or "").strip().lower()
+    if not normalized or not re.fullmatch(r"[a-z0-9][a-z0-9 _-]{0,49}", normalized):
+        raise ValueError("Role name must contain only letters, numbers, spaces, '-' or '_'")
+    if normalized in _RESERVED_ROLE_NAMES:
+        raise ValueError("That role name is reserved")
+    return normalized
+
+
+def validate_role_permissions(
+    role_name: str, permissions: Sequence[str], *, is_system: bool = False
+) -> list[str]:
+    """Validate permissions at the write boundary, not only at read time."""
+    values = list(dict.fromkeys(str(p).strip() for p in (permissions or [])))
+    if "*" in values and (role_name.strip().lower() != "admin" or not is_system):
+        raise ValueError("Wildcard permission is reserved for the system Admin role")
+    allowed = set(all_permission_keys())
+    unknown = [p for p in values if p != "*" and p not in allowed]
+    if unknown:
+        raise ValueError(f"Unknown permission key(s): {', '.join(unknown)}")
+    if role_name.strip().lower() == "admin" and is_system and values != ["*"]:
+        raise ValueError("System Admin role must keep exactly the wildcard permission")
+    return values
 
 
 # ---------------------------------------------------------------------
